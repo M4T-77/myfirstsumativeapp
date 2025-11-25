@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, SafeAreaView, Modal, Alert, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, SafeAreaView, Modal, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { z } from 'zod';
 import Button from '../components/Button';
 import TextField from '../components/TextField';
 import { titleSchema } from '../lib/titleSchema';
 import { contentSchema } from '../lib/contentSchema';
 import { colors } from '../styles/colors';
+import { Ionicons } from '@expo/vector-icons';
+import { styles } from '../styles/styles';
+
 
 // Schemas de validación con Zod
 const NoteSchema = z.object({
@@ -21,9 +24,11 @@ export default function NotesApp() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isViewingLockedNote, setIsViewingLockedNote] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [validationErrors, setValidationErrors] = useState({ title: '', content: '' });
 
   useEffect(() => {
@@ -54,6 +59,7 @@ export default function NotesApp() {
     setEditTitle(note.title);
     setEditContent(note.content);
     setIsEditing(true);
+    setIsViewingLockedNote(true);
   };
 
   const createNewNote = () => {
@@ -62,6 +68,7 @@ export default function NotesApp() {
     setEditContent('');
     setValidationErrors({ title: '', content: '' });
     setIsEditing(true);
+    setIsViewingLockedNote(false);
   };
 
   const saveNote = () => {
@@ -127,6 +134,7 @@ export default function NotesApp() {
     setEditTitle('');
     setEditContent('');
     setValidationErrors({ title: '', content: '' });
+    setIsViewingLockedNote(false);
   };
 
   const canSave = () => {
@@ -134,6 +142,11 @@ export default function NotesApp() {
     const hasErrors = validationErrors.title !== '' || validationErrors.content !== '';
     return hasContent && !hasErrors;
   };
+
+  const filteredNotes = notes.filter(note =>
+    note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    note.content.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   if (loading && notes.length === 0) {
     return (
@@ -148,17 +161,26 @@ export default function NotesApp() {
     <SafeAreaView style={styles.container}>
       <View style={styles.contentContainer}>
         <Text style={styles.headerTitle}>iNotes</Text>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={24} color={colors.medium} style={styles.searchIcon} />
+          <TextField
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Buscar notas..."
+            style={styles.searchInput}
+          />
+        </View>
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={notes.length === 0 ? styles.emptyScrollContent : {}}
+          contentContainerStyle={filteredNotes.length === 0 ? styles.emptyScrollContent : {}}
         >
-          {notes.length === 0 ? (
+          {filteredNotes.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No hay notas aún</Text>
               <Text style={styles.emptySubtitle}>Toca + para crear una</Text>
             </View>
           ) : (
-            notes.map((note) => (
+            filteredNotes.map((note) => (
               <TouchableOpacity
                 key={note.id}
                 onPress={() => openNote(note)}
@@ -190,22 +212,24 @@ export default function NotesApp() {
               <View style={styles.modalHeader}>
                 <Button
                   onPress={closeEditor}
-                  title="Cancelar"
+                  title={isViewingLockedNote ? "Cerrar" : "Cancelar"}
                   disabled={loading}
                   style={styles.transparentButton}
                   textStyle={styles.cancelButtonText}
                 />
-                <Button
-                  onPress={saveNote}
-                  title="Listo"
-                  loading={loading}
-                  disabled={!canSave()}
-                  style={styles.transparentButton}
-                  textStyle={[
-                    styles.saveButtonText,
-                    !canSave() && styles.saveButtonTextDisabled,
-                  ]}
-                />
+                {!isViewingLockedNote && (
+                  <Button
+                    onPress={saveNote}
+                    title="Listo"
+                    loading={loading}
+                    disabled={!canSave()}
+                    style={styles.transparentButton}
+                    textStyle={[
+                      styles.saveButtonText,
+                      !canSave() && styles.saveButtonTextDisabled,
+                    ]}
+                  />
+                )}
               </View>
 
               <ScrollView style={styles.editorScroll}>
@@ -213,7 +237,7 @@ export default function NotesApp() {
                   value={editTitle}
                   onChangeText={setEditTitle}
                   placeholder="Título"
-                  editable={!loading}
+                  editable={!loading && !isViewingLockedNote}
                   style={styles.titleInput}
                   error={validationErrors.title}
                   characterCount={editTitle.length}
@@ -226,7 +250,7 @@ export default function NotesApp() {
                     onChangeText={setEditContent}
                     placeholder="Nota"
                     multiline
-                    editable={!loading}
+                    editable={!loading && !isViewingLockedNote}
                     style={styles.contentInput}
                     error={validationErrors.content}
                     characterCount={editContent.length}
@@ -260,166 +284,3 @@ export default function NotesApp() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  headerTitle: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: colors.lightest,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.dark,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: colors.darkest,
-  },
-  contentContainer: {
-    flex: 1,
-    backgroundColor: colors.darkest,
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: colors.darkest,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: colors.light,
-    marginTop: 16,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  emptyScrollContent: {
-    flexGrow: 1,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 100,
-  },
-  emptyTitle: {
-    color: colors.light,
-    fontSize: 18,
-  },
-  emptySubtitle: {
-    color: colors.medium,
-    fontSize: 14,
-    marginTop: 8,
-  },
-  noteCard: {
-    backgroundColor: colors.dark,
-    marginHorizontal: 16,
-    marginTop: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.lightest,
-  },
-  noteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-    alignItems: 'center',
-  },
-  noteTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.lightest,
-    flex: 1,
-    marginRight: 8,
-  },
-  noteDate: {
-    fontSize: 14,
-    color: colors.light,
-  },
-  noteContent: {
-    fontSize: 15,
-    color: colors.light,
-    marginTop: 4,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.darkest,
-  },
-  modalContent: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.dark,
-  },
-  transparentButton: {
-    backgroundColor: 'transparent',
-  },
-  cancelButtonText: {
-    fontSize: 17,
-    color: colors.lightest,
-  },
-  saveButtonText: {
-    fontSize: 17,
-    color: colors.lightest,
-    fontWeight: '600',
-  },
-  saveButtonTextDisabled: {
-    color: colors.medium,
-  },
-  editorScroll: {
-    flex: 1,
-    padding: 16,
-  },
-  titleInput: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: colors.lightest,
-    marginBottom: 4,
-  },
-  contentInputContainer: {
-    marginTop: 12,
-  },
-  contentInput: {
-    minHeight: 200,
-    textAlignVertical: 'top',
-    color: colors.light,
-    fontSize: 16,
-  },
-  deleteButtonContainer: {
-    padding: 16,
-    borderTopWidth: 0.5,
-    borderTopColor: colors.dark,
-  },
-  deleteButton: {
-    backgroundColor: '#BF360C',
-  },
-  deleteButtonText: {
-    color: colors.lightest,
-  },
-  floatingButton: {
-    position: 'absolute',
-    bottom: 40,
-    right: 20,
-    backgroundColor: colors.lightest,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    shadowColor: colors.darkest,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  floatingButtonText: {
-    fontSize: 30,
-    color: colors.darkest,
-    fontWeight: '300',
-  },
-});
