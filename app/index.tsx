@@ -1,32 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, SafeAreaView, Modal, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
-import axios from 'axios';
+import { View, Text, ScrollView, SafeAreaView, Modal, Alert, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
 import { z } from 'zod';
 import Button from '../components/Button';
 import TextField from '../components/TextField';
 import { titleSchema } from '../lib/titleSchema';
 import { contentSchema } from '../lib/contentSchema';
-
-// Configura tu URL base de la API
-const API_URL = 'https://8554-firebase-myfirstsumativeapp-1763932350939.cluster-f73ibkkuije66wssuontdtbx6q.cloudworkstations.dev';
+import { colors } from '../styles/colors';
 
 // Schemas de validación con Zod
 const NoteSchema = z.object({
-  id: z.number().optional(),
+  id: z.string(),
   title: titleSchema,
   content: contentSchema,
-  date: z.string()
+  date: z.string(),
 });
 
 type Note = z.infer<typeof NoteSchema>;
-
-const NoteCreateSchema = z.object({
-  title: titleSchema,
-  content: contentSchema,
-  date: z.string()
-});
-
-const NotesArraySchema = z.array(NoteSchema);
 
 export default function NotesApp() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -35,76 +24,31 @@ export default function NotesApp() {
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [validationErrors, setValidationErrors] = useState({ title: '', content: '' });
 
-  // Cargar notas al iniciar la app
-  useEffect(() => {
-    loadNotes();
-  }, []);
-
-  // Validar en tiempo real
   useEffect(() => {
     if (isEditing) {
       validateFields();
     }
   }, [editTitle, editContent, isEditing]);
 
-  // Validar campos en tiempo real
   const validateFields = () => {
     const errors = { title: '', content: '' };
-
-    // Validar título
     if (editTitle.length > 0) {
       const result = titleSchema.safeParse(editTitle);
       if (!result.success) {
-        errors.title = result.error.issues[0]?.message || 'Error de validación';
+        errors.title = result.error.flatten().fieldErrors.title?.[0] || 'Título inválido';
       }
     }
-
-    // Validar contenido
     if (editContent.length > 0) {
       const result = contentSchema.safeParse(editContent);
       if (!result.success) {
-        errors.content = result.error.issues[0]?.message || 'Error de validación';
+        errors.content = result.error.flatten().fieldErrors.content?.[0] || 'Contenido inválido';
       }
     }
-
     setValidationErrors(errors);
   };
 
-  // Obtener todas las notas
-  const loadNotes = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get(API_URL);
-      
-      const validatedNotes = NotesArraySchema.parse(response.data);
-      setNotes(validatedNotes);
-    } catch (error) {
-      console.error('Error al cargar notas:', error);
-      
-      if (error instanceof z.ZodError) {
-        Alert.alert('Error de validación', 'Los datos recibidos no son válidos');
-        console.error('Errores de validación:', error.errors);
-      } else if (axios.isAxiosError(error)) {
-        Alert.alert('Error de conexión', 'No se pudo conectar con el servidor');
-      } else {
-        Alert.alert('Error', 'No se pudieron cargar las notas');
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  // Refrescar notas
-  const handleRefresh = () => {
-    setRefreshing(true);
-    loadNotes();
-  };
-
-  // Abrir nota para editar
   const openNote = (note: Note) => {
     setSelectedNote(note);
     setEditTitle(note.title);
@@ -112,7 +56,6 @@ export default function NotesApp() {
     setIsEditing(true);
   };
 
-  // Crear nueva nota
   const createNewNote = () => {
     setSelectedNote(null);
     setEditTitle('');
@@ -121,62 +64,44 @@ export default function NotesApp() {
     setIsEditing(true);
   };
 
-  // Guardar nota (crear o actualizar)
-  const saveNote = async () => {
+  const saveNote = () => {
     if (!editTitle.trim() && !editContent.trim()) {
-      Alert.alert('Error', 'La nota debe tener al menos título o contenido');
+      Alert.alert('Error', 'La nota debe tener al menos un título o contenido.');
       return;
     }
 
-    try {
-      const noteData = NoteCreateSchema.parse({
-        title: editTitle.trim(),
-        content: editContent.trim(),
-        date: new Date().toLocaleDateString('es-ES')
-      });
-
-      setLoading(true);
-      
-      if (selectedNote?.id) {
-        // Actualizar nota existente
-        const response = await axios.put(`${API_URL}/${selectedNote.id}`, noteData);
-        const validatedNote = NoteSchema.parse(response.data);
-        
-        setNotes(prevNotes => 
-          prevNotes.map(note => 
-            note.id === selectedNote.id ? validatedNote : note
-          )
-        );
-      } else {
-        // Crear nueva nota
-        const response = await axios.post(API_URL, noteData);
-        const validatedNote = NoteSchema.parse(response.data);
-        
-        setNotes(prevNotes => [validatedNote, ...prevNotes]);
-      }
-      
-      Alert.alert('Éxito', 'Nota guardada correctamente');
-      closeEditor();
-    } catch (error) {
-      console.error('Error al guardar nota:', error);
-      
-      if (error instanceof z.ZodError) {
-        const errorMessages = error.errors
-          .map(err => `${err.path.join('.')}: ${err.message}`)
-          .join('\n');
-        Alert.alert('Error de validación', errorMessages);
-      } else if (axios.isAxiosError(error)) {
-        Alert.alert('Error de conexión', 'No se pudo conectar con el servidor');
-      } else {
-        Alert.alert('Error', 'No se pudo guardar la nota');
-      }
-    } finally {
-      setLoading(false);
+    if (validationErrors.title || validationErrors.content) {
+      Alert.alert('Error de validación', 'Por favor, corrige los errores de validación antes de guardar.');
+      return;
     }
+
+    setLoading(true);
+
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const formattedDate = `${day}/${month}/${year}`;
+
+    const noteData = {
+      title: editTitle.trim(),
+      content: editContent.trim(),
+      date: formattedDate,
+    };
+
+    if (selectedNote?.id) {
+      const updatedNote = { ...selectedNote, ...noteData };
+      setNotes(notes.map(note => (note.id === selectedNote.id ? updatedNote : note)));
+    } else {
+      const newNote = { ...noteData, id: Date.now().toString() };
+      setNotes([newNote, ...notes]);
+    }
+
+    setLoading(false);
+    closeEditor();
   };
 
-  // Eliminar nota
-  const deleteNote = async () => {
+  const deleteNote = () => {
     if (!selectedNote?.id) return;
 
     Alert.alert(
@@ -187,31 +112,15 @@ export default function NotesApp() {
         {
           text: 'Eliminar',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              await axios.delete(`${API_URL}/${selectedNote.id}`);
-              
-              setNotes(prevNotes => prevNotes.filter(note => note.id !== selectedNote.id));
-              Alert.alert('Éxito', 'Nota eliminada correctamente');
-              closeEditor();
-            } catch (error) {
-              console.error('Error al eliminar nota:', error);
-              if (axios.isAxiosError(error)) {
-                Alert.alert('Error de conexión', 'No se pudo conectar con el servidor');
-              } else {
-                Alert.alert('Error', 'No se pudo eliminar la nota');
-              }
-            } finally {
-              setLoading(false);
-            }
-          }
-        }
-      ]
+          onPress: () => {
+            setNotes(notes.filter(note => note.id !== selectedNote.id));
+            closeEditor();
+          },
+        },
+      ],
     );
   };
 
-  // Cerrar editor
   const closeEditor = () => {
     setIsEditing(false);
     setSelectedNote(null);
@@ -220,22 +129,16 @@ export default function NotesApp() {
     setValidationErrors({ title: '', content: '' });
   };
 
-  // Verificar si hay errores de validación
-  const hasValidationErrors = () => {
-    return validationErrors.title !== '' || validationErrors.content !== '';
-  };
-
-  // Verificar si puede guardar
   const canSave = () => {
-    const hasTrimmedContent = editTitle.trim().length > 0 || editContent.trim().length > 0;
-    return hasTrimmedContent && !hasValidationErrors();
+    const hasContent = editTitle.trim().length > 0 || editContent.trim().length > 0;
+    const hasErrors = validationErrors.title !== '' || validationErrors.content !== '';
+    return hasContent && !hasErrors;
   };
 
-  // Pantalla de carga inicial
   if (loading && notes.length === 0) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#ffd60a" />
+        <ActivityIndicator size="large" color={colors.lightest} />
         <Text style={styles.loadingText}>Cargando notas...</Text>
       </SafeAreaView>
     );
@@ -244,20 +147,18 @@ export default function NotesApp() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.contentContainer}>
-        {/* Lista de notas */}
-        <ScrollView 
+        <Text style={styles.headerTitle}>iNotes</Text>
+        <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={notes.length === 0 ? styles.emptyScrollContent : undefined}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
+          contentContainerStyle={notes.length === 0 ? styles.emptyScrollContent : {}}
         >
           {notes.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No hay notas</Text>
+              <Text style={styles.emptyTitle}>No hay notas aún</Text>
               <Text style={styles.emptySubtitle}>Toca + para crear una</Text>
             </View>
           ) : (
-            notes.map((note: Note) => (
+            notes.map((note) => (
               <TouchableOpacity
                 key={note.id}
                 onPress={() => openNote(note)}
@@ -270,10 +171,7 @@ export default function NotesApp() {
                   </Text>
                   <Text style={styles.noteDate}>{note.date}</Text>
                 </View>
-                <Text 
-                  style={styles.noteContent}
-                  numberOfLines={2}
-                >
+                <Text style={styles.noteContent} numberOfLines={2}>
                   {note.content || 'Sin contenido'}
                 </Text>
               </TouchableOpacity>
@@ -281,7 +179,6 @@ export default function NotesApp() {
           )}
         </ScrollView>
 
-        {/* Modal de edición */}
         <Modal
           visible={isEditing}
           animationType="slide"
@@ -290,7 +187,6 @@ export default function NotesApp() {
         >
           <SafeAreaView style={styles.modalContainer}>
             <View style={styles.modalContent}>
-              {/* Header del modal */}
               <View style={styles.modalHeader}>
                 <Button
                   onPress={closeEditor}
@@ -299,20 +195,19 @@ export default function NotesApp() {
                   style={styles.transparentButton}
                   textStyle={styles.cancelButtonText}
                 />
-                <Button 
+                <Button
                   onPress={saveNote}
                   title="Listo"
                   loading={loading}
-                  disabled={loading || !canSave()}
+                  disabled={!canSave()}
                   style={styles.transparentButton}
                   textStyle={[
                     styles.saveButtonText,
-                    !canSave() && styles.saveButtonTextDisabled
+                    !canSave() && styles.saveButtonTextDisabled,
                   ]}
                 />
               </View>
 
-              {/* Editor */}
               <ScrollView style={styles.editorScroll}>
                 <TextField
                   value={editTitle}
@@ -340,12 +235,11 @@ export default function NotesApp() {
                 </View>
               </ScrollView>
 
-              {/* Botón de eliminar */}
               {selectedNote?.id && (
                 <View style={styles.deleteButtonContainer}>
-                  <Button 
+                  <Button
                     onPress={deleteNote}
-                    title="Eliminar nota"
+                    title="Eliminar Nota"
                     disabled={loading}
                     style={styles.deleteButton}
                     textStyle={styles.deleteButtonText}
@@ -356,8 +250,7 @@ export default function NotesApp() {
           </SafeAreaView>
         </Modal>
 
-        {/* Botón flotante para crear nota */}
-        <Button 
+        <Button
           onPress={createNewNote}
           title="+"
           style={styles.floatingButton}
@@ -368,176 +261,165 @@ export default function NotesApp() {
   );
 }
 
-// Estilos
-const styles = {
-  // Contenedores principales
+const styles = StyleSheet.create({
+  headerTitle: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: colors.lightest,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.dark,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#000'
+    backgroundColor: colors.darkest,
   },
   contentContainer: {
     flex: 1,
-    backgroundColor: '#1c1c1e'
+    backgroundColor: colors.darkest,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const
+    backgroundColor: colors.darkest,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  
-  // Texto de carga
   loadingText: {
-    color: '#8e8e93',
-    marginTop: 16
+    color: colors.light,
+    marginTop: 16,
   },
-  
-  // ScrollView
   scrollView: {
-    flex: 1
+    flex: 1,
   },
   emptyScrollContent: {
-    flexGrow: 1
+    flexGrow: 1,
   },
-  
-  // Estado vacío
   emptyState: {
     flex: 1,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    marginTop: 100
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 100,
   },
   emptyTitle: {
-    color: '#8e8e93',
-    fontSize: 18
+    color: colors.light,
+    fontSize: 18,
   },
   emptySubtitle: {
-    color: '#8e8e93',
+    color: colors.medium,
     fontSize: 14,
-    marginTop: 8
+    marginTop: 8,
   },
-  
-  // Tarjeta de nota
   noteCard: {
-    backgroundColor: '#2c2c2e',
+    backgroundColor: colors.dark,
     marginHorizontal: 16,
     marginTop: 12,
     padding: 16,
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#ffd60a'
+    borderLeftColor: colors.lightest,
   },
   noteHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginBottom: 4,
-    alignItems: 'center' as const
+    alignItems: 'center',
   },
   noteTitle: {
     fontSize: 18,
-    fontWeight: '600' as const,
-    color: '#fff',
+    fontWeight: '600',
+    color: colors.lightest,
     flex: 1,
-    marginRight: 8
+    marginRight: 8,
   },
   noteDate: {
     fontSize: 14,
-    color: '#8e8e93'
+    color: colors.light,
   },
   noteContent: {
     fontSize: 15,
-    color: '#8e8e93',
-    marginTop: 4
+    color: colors.light,
+    marginTop: 4,
   },
-  
-  // Modal
   modalContainer: {
     flex: 1,
-    backgroundColor: '#1c1c1e'
+    backgroundColor: colors.darkest,
   },
   modalContent: {
-    flex: 1
+    flex: 1,
   },
   modalHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#38383a'
+    borderBottomColor: colors.dark,
   },
-  
-  // Botones del modal
   transparentButton: {
-    backgroundColor: 'transparent'
+    backgroundColor: 'transparent',
   },
   cancelButtonText: {
     fontSize: 17,
-    color: '#ffd60a'
+    color: colors.lightest,
   },
   saveButtonText: {
     fontSize: 17,
-    color: '#ffd60a',
-    fontWeight: '600' as const
+    color: colors.lightest,
+    fontWeight: '600',
   },
   saveButtonTextDisabled: {
-    color: '#8e8e93'
+    color: colors.medium,
   },
-  
-  // Editor
   editorScroll: {
     flex: 1,
-    padding: 16
+    padding: 16,
   },
   titleInput: {
     fontSize: 28,
-    fontWeight: 'bold' as const,
-    marginBottom: 4
+    fontWeight: 'bold',
+    color: colors.lightest,
+    marginBottom: 4,
   },
   contentInputContainer: {
-    marginTop: 12
+    marginTop: 12,
   },
   contentInput: {
     minHeight: 200,
-    textAlignVertical: 'top' as const
+    textAlignVertical: 'top',
+    color: colors.light,
+    fontSize: 16,
   },
-  
-  // Botón de eliminar
   deleteButtonContainer: {
     padding: 16,
     borderTopWidth: 0.5,
-    borderTopColor: '#38383a'
+    borderTopColor: colors.dark,
   },
   deleteButton: {
-    backgroundColor: '#ff3b30'
+    backgroundColor: '#BF360C',
   },
   deleteButtonText: {
-    color: '#fff'
+    color: colors.lightest,
   },
-  
-  _floatingButton: {
-    position: 'absolute' as const,
+  floatingButton: {
+    position: 'absolute',
     bottom: 40,
     right: 20,
-    backgroundColor: '#ffd60a',
+    backgroundColor: colors.lightest,
     width: 60,
     height: 60,
     borderRadius: 30,
-    shadowColor: '#000',
+    shadowColor: colors.darkest,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 8
-  },
-  get floatingButton() {
-    return this._floatingButton;
-  },
-  set floatingButton(value) {
-    this._floatingButton = value;
+    elevation: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   floatingButtonText: {
     fontSize: 30,
-    color: '#000',
-    fontWeight: '300' as const
-  }
-};
+    color: colors.darkest,
+    fontWeight: '300',
+  },
+});
