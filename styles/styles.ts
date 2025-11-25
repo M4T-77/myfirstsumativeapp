@@ -1,3 +1,4 @@
+
 import { StyleSheet } from 'react-native';
 import { colors } from './colors';
 
@@ -189,5 +190,36 @@ export const styles = StyleSheet.create({
     elevation: 8,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  aiActionsContainer: {
+    marginVertical: 12,
+  },
+  aiButton: {
+    backgroundColor: colors.primary, 
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  aiButtonText: {
+    color: colors.lightest,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  errorText: {
+    color: 'red',
+    marginHorizontal: 16,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  speakButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    padding: 8,
   },
 });

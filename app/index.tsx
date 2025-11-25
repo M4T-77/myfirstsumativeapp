@@ -8,7 +8,46 @@ import { contentSchema } from '../lib/contentSchema';
 import { colors } from '../styles/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { styles } from '../styles/styles';
+import * as Speech from 'expo-speech';
+import { GoogleGenAI } from "@google/genai";
 
+const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+if (!API_KEY) {
+  console.warn('Falta la variable de entorno EXPO_PUBLIC_GEMINI_API_KEY.');
+}
+
+let ai: any = null;
+if (API_KEY) {
+  ai = new GoogleGenAI({ apiKey: API_KEY });
+}
+
+async function generateTaskExplanation(task: string): Promise<string> {
+  if (!ai) {
+    throw new Error('La API de Gemini no está configurada. Verifica tu API Key.');
+  }
+
+  const prompt = `Como asistente virtual, el usuario necesita ayuda sobre cómo realizar la siguiente tarea: "${task}".
+
+Genera una explicación clara y concisa o una guía paso a paso para completar esta tarea. La respuesta debe ser adecuada para ser el contenido de una nota.
+
+IMPORTANTE: Responde únicamente con el contenido de la guía. No incluyas encabezados, saludos, o frases como "Aquí tienes una guía..." o "Espero que esto ayude".`;
+
+  try {
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: `Responde siempre en español: ${prompt}`,
+    });
+
+    if (result.text) {
+      return result.text;
+    } else {
+      throw new Error('La respuesta de la IA no contiene texto.');
+    }
+  } catch (error) {
+    console.error('Error generando la explicación:', error);
+    throw new Error('Error al contactar a la IA. Revisa tu API Key y la conexión a internet.');
+  }
+}
 
 // Schemas de validación con Zod
 const NoteSchema = z.object({
@@ -30,6 +69,10 @@ export default function NotesApp() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [validationErrors, setValidationErrors] = useState({ title: '', content: '' });
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [aiGeneratedContent, setAiGeneratedContent] = useState('');
 
   useEffect(() => {
     if (isEditing) {
@@ -37,20 +80,29 @@ export default function NotesApp() {
     }
   }, [editTitle, editContent, isEditing]);
 
+  useEffect(() => {
+    return () => {
+      Speech.stop();
+    };
+  }, []);
+
   const validateFields = () => {
     const errors = { title: '', content: '' };
+    
     if (editTitle.length > 0) {
       const result = titleSchema.safeParse(editTitle);
       if (!result.success) {
-        errors.title = result.error.flatten().fieldErrors.title?.[0] || 'Título inválido';
+        errors.title = result.error.issues[0]?.message || 'Error de validación';
       }
     }
+
     if (editContent.length > 0) {
       const result = contentSchema.safeParse(editContent);
       if (!result.success) {
-        errors.content = result.error.flatten().fieldErrors.content?.[0] || 'Contenido inválido';
+        errors.content = result.error.issues[0]?.message || 'Error de validación';
       }
     }
+
     setValidationErrors(errors);
   };
 
@@ -60,6 +112,7 @@ export default function NotesApp() {
     setEditContent(note.content);
     setIsEditing(true);
     setIsViewingLockedNote(true);
+    setAiGeneratedContent('');
   };
 
   const createNewNote = () => {
@@ -69,6 +122,7 @@ export default function NotesApp() {
     setValidationErrors({ title: '', content: '' });
     setIsEditing(true);
     setIsViewingLockedNote(false);
+    setAiGeneratedContent('');
   };
 
   const saveNote = () => {
@@ -135,12 +189,53 @@ export default function NotesApp() {
     setEditContent('');
     setValidationErrors({ title: '', content: '' });
     setIsViewingLockedNote(false);
+    setGenerationError(null);
+    setAiGeneratedContent('');
+    Speech.stop();
+    setIsSpeaking(false);
   };
 
   const canSave = () => {
     const hasContent = editTitle.trim().length > 0 || editContent.trim().length > 0;
     const hasErrors = validationErrors.title !== '' || validationErrors.content !== '';
     return hasContent && !hasErrors;
+  };
+
+  const handleGenerateContent = async () => {
+    if (!editContent.trim()) {
+      Alert.alert('Error', 'Por favor, escribe una descripción de la tarea para generar ayuda.');
+      return;
+    }
+    
+    setIsGenerating(true);
+    setGenerationError(null);
+    
+    try {
+      const content = await generateTaskExplanation(editContent);
+      setAiGeneratedContent(content);
+    } catch (error: any) {
+      setGenerationError(error.message);
+      Alert.alert('Error', error.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const speakDescription = async () => {
+    if (!aiGeneratedContent.trim()) return;
+
+    if (await Speech.isSpeakingAsync()) {
+      await Speech.stop();
+      setIsSpeaking(false);
+      return;
+    }
+
+    Speech.speak(aiGeneratedContent, {
+      language: 'es-ES',
+      onStart: () => setIsSpeaking(true),
+      onDone: () => setIsSpeaking(false),
+      onError: () => setIsSpeaking(false),
+    });
   };
 
   const filteredNotes = notes.filter(note =>
@@ -151,7 +246,7 @@ export default function NotesApp() {
   if (loading && notes.length === 0) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.lightest} />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Cargando notas...</Text>
       </SafeAreaView>
     );
@@ -177,7 +272,7 @@ export default function NotesApp() {
           {filteredNotes.length === 0 ? (
             <View style={styles.emptyState}>
               {searchQuery ? (
-                <Text style={styles.emptyTitle}>No se encontraron notas con ese título</Text>
+                <Text style={styles.emptyTitle}>No se encontraron notas con ese término</Text>
               ) : (
                 <>
                   <Text style={styles.emptyTitle}>No hay notas aún</Text>
@@ -238,7 +333,7 @@ export default function NotesApp() {
                     style={styles.headerButton}
                   >
                     {loading ? (
-                      <ActivityIndicator size="small" color={colors.lightest} />
+                      <ActivityIndicator size="small" color={colors.primary} />
                     ) : (
                       <>
                         <Ionicons
@@ -281,6 +376,92 @@ export default function NotesApp() {
                     maxLength={5000}
                   />
                 </View>
+
+                {/* Botón de ayuda con IA - visible en modo visualización */}
+                {isViewingLockedNote && (
+                  <>
+                    <View style={{ marginTop: 12, marginBottom: 8 }}>
+                      <Button
+                        onPress={handleGenerateContent}
+                        title={isGenerating ? "Generando..." : "Ayúdame con esta tarea"}
+                        disabled={isGenerating || !editContent.trim()}
+                        loading={isGenerating}
+                        style={{
+                          backgroundColor: colors.lightest,
+                          flexDirection: 'row',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          padding: 12,
+                          borderRadius: 8,
+                        }}
+                        textStyle={{
+                          color: colors.darkest,
+                          fontSize: 16,
+                          fontWeight: '600',
+                        }}
+                        icon={<Ionicons name="bulb-outline" size={18} color={colors.darkest} style={{ marginRight: 6 }} />}
+                      />
+                    </View>
+                    
+                    {generationError && (
+                      <Text style={{ color: '#BF360C', fontSize: 14, marginTop: 8, textAlign: 'center' }}>
+                        {generationError}
+                      </Text>
+                    )}
+
+                    {/* Contenido generado por IA */}
+                    {aiGeneratedContent ? (
+                      <View style={{
+                        marginTop: 12,
+                        backgroundColor: colors.dark,
+                        padding: 16,
+                        borderRadius: 12,
+                        borderLeftWidth: 4,
+                        borderLeftColor: colors.lightest,
+                      }}>
+                        <Text style={{
+                          color: colors.lightest,
+                          fontSize: 16,
+                          fontWeight: '600',
+                          marginBottom: 8,
+                        }}>
+                          Guía de ayuda:
+                        </Text>
+                        <Text style={{
+                          color: colors.light,
+                          fontSize: 15,
+                          lineHeight: 22,
+                        }}>
+                          {aiGeneratedContent}
+                        </Text>
+                        
+                        {/* Botón para leer la guía generada */}
+                        <TouchableOpacity 
+                          onPress={speakDescription} 
+                          style={{
+                            marginTop: 12,
+                            backgroundColor: colors.lightest,
+                            padding: 12,
+                            borderRadius: 8,
+                            flexDirection: 'row',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Ionicons 
+                            name={isSpeaking ? "stop-circle-outline" : "volume-high-outline"} 
+                            size={20} 
+                            color={colors.darkest}
+                            style={{ marginRight: 6 }}
+                          />
+                          <Text style={{ color: colors.darkest, fontSize: 16, fontWeight: '600' }}>
+                            {isSpeaking ? "Detener lectura" : "Leer guía"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </>
+                )}
               </ScrollView>
 
               {selectedNote?.id && (
