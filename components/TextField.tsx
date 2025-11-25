@@ -1,5 +1,6 @@
 import React from 'react';
 import { TextInput, View, Text, StyleSheet } from 'react-native';
+import { colors } from '../styles/colors';
 
 interface TextFieldProps {
   value: string;
@@ -47,9 +48,10 @@ const TextField: React.FC<TextFieldProps> = ({
 
 const styles = StyleSheet.create({
   input: {
-    fontSize: 17,
-    color: '#fff',
-    padding: 0,
+    fontSize: 20,
+    color: colors.lightest,
+    padding: 10,
+    borderRadius: 10,
   },
   errorText: {
     color: '#ff3b30',

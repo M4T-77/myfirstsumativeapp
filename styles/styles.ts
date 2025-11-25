@@ -34,17 +34,17 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     margin: 16,
     backgroundColor: colors.dark,
-    borderRadius: 10,
-    paddingHorizontal: 10,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 50,
   },
   searchIcon: {
     marginRight: 10,
   },
   searchInput: {
     flex: 1,
-    backgroundColor: colors.dark,
-    color: colors.light,
-    fontSize: 18, 
+    fontSize: 18,
+    color: colors.lightest,
   },
   scrollView: {
     flex: 1,
@@ -56,7 +56,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 100,
+    transform: [{ translateY: -50 }],
   },
   emptyTitle: {
     color: colors.light,
@@ -109,9 +109,15 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.dark,
+  },
+  headerButton: {
+    backgroundColor: 'transparent',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   transparentButton: {
     backgroundColor: 'transparent',
@@ -127,6 +133,9 @@ export const styles = StyleSheet.create({
   },
   saveButtonTextDisabled: {
     color: colors.medium,
+  },
+  iconInButton: {
+    marginRight: 6,
   },
   editorScroll: {
     flex: 1,
@@ -154,9 +163,16 @@ export const styles = StyleSheet.create({
   },
   deleteButton: {
     backgroundColor: '#BF360C',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
   },
   deleteButtonText: {
     color: colors.lightest,
+    fontSize: 17,
+    fontWeight: '600',
   },
   floatingButton: {
     position: 'absolute',
@@ -173,10 +189,5 @@ export const styles = StyleSheet.create({
     elevation: 8,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  floatingButtonText: {
-    fontSize: 30,
-    color: colors.darkest,
-    fontWeight: '300',
   },
 });

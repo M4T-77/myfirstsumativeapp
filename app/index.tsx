@@ -176,8 +176,14 @@ export default function NotesApp() {
         >
           {filteredNotes.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No hay notas aún</Text>
-              <Text style={styles.emptySubtitle}>Toca + para crear una</Text>
+              {searchQuery ? (
+                <Text style={styles.emptyTitle}>No se encontraron notas con ese título</Text>
+              ) : (
+                <>
+                  <Text style={styles.emptyTitle}>No hay notas aún</Text>
+                  <Text style={styles.emptySubtitle}>Toca + para crear una</Text>
+                </>
+              )}
             </View>
           ) : (
             filteredNotes.map((note) => (
@@ -217,18 +223,36 @@ export default function NotesApp() {
                   style={styles.transparentButton}
                   textStyle={styles.cancelButtonText}
                 />
-                {!isViewingLockedNote && (
-                  <Button
+                {isViewingLockedNote ? (
+                  <TouchableOpacity
+                    onPress={() => setIsViewingLockedNote(false)}
+                    style={styles.headerButton}
+                  >
+                    <Ionicons name="create-outline" size={22} color={colors.lightest} style={styles.iconInButton} />
+                    <Text style={styles.saveButtonText}>Modificar</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
                     onPress={saveNote}
-                    title="Listo"
-                    loading={loading}
-                    disabled={!canSave()}
-                    style={styles.transparentButton}
-                    textStyle={[
-                      styles.saveButtonText,
-                      !canSave() && styles.saveButtonTextDisabled,
-                    ]}
-                  />
+                    disabled={!canSave() || loading}
+                    style={styles.headerButton}
+                  >
+                    {loading ? (
+                      <ActivityIndicator size="small" color={colors.lightest} />
+                    ) : (
+                      <>
+                        <Ionicons
+                          name="checkmark-outline"
+                          size={24}
+                          color={!canSave() ? colors.medium : colors.lightest}
+                          style={styles.iconInButton}
+                        />
+                        <Text style={[styles.saveButtonText, !canSave() && styles.saveButtonTextDisabled]}>
+                          Listo
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
                 )}
               </View>
 
@@ -261,25 +285,19 @@ export default function NotesApp() {
 
               {selectedNote?.id && (
                 <View style={styles.deleteButtonContainer}>
-                  <Button
-                    onPress={deleteNote}
-                    title="Eliminar Nota"
-                    disabled={loading}
-                    style={styles.deleteButton}
-                    textStyle={styles.deleteButtonText}
-                  />
+                  <TouchableOpacity onPress={deleteNote} disabled={loading} style={styles.deleteButton}>
+                    <Ionicons name="trash-outline" size={22} color={colors.lightest} style={styles.iconInButton} />
+                    <Text style={styles.deleteButtonText}>Eliminar Nota</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
           </SafeAreaView>
         </Modal>
 
-        <Button
-          onPress={createNewNote}
-          title="+"
-          style={styles.floatingButton}
-          textStyle={styles.floatingButtonText}
-        />
+        <TouchableOpacity onPress={createNewNote} style={styles.floatingButton}>
+          <Ionicons name="add" size={32} color={colors.darkest} />
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
