@@ -1,22 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, SafeAreaView, Modal, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { GoogleGenAI } from "@google/genai";
+import axios from 'axios';
+import * as Speech from 'expo-speech';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { z } from 'zod';
 import Button from '../components/Button';
 import TextField from '../components/TextField';
-import { titleSchema } from '../lib/titleSchema';
 import { contentSchema } from '../lib/contentSchema';
+import { titleSchema } from '../lib/titleSchema';
 import { colors } from '../styles/colors';
-import { Ionicons } from '@expo/vector-icons';
 import { styles } from '../styles/styles';
-import * as Speech from 'expo-speech';
-import { GoogleGenAI } from "@google/genai";
-
 const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 if (!API_KEY) {
   console.warn('Falta la variable de entorno EXPO_PUBLIC_GEMINI_API_KEY.');
 }
 
-let ai: any = null;
+const BASE_URL = "https://3000-firebase-myfirstsumativeapp-1763932350939.cluster-f73ibkkuije66wssuontdtbx6q.cloudworkstations.dev"  
+
+let ai: GoogleGenAI | null = null;
 if (API_KEY) {
   ai = new GoogleGenAI({ apiKey: API_KEY });
 }
@@ -26,15 +28,11 @@ async function generateTaskExplanation(task: string): Promise<string> {
     throw new Error('La API de Gemini no está configurada. Verifica tu API Key.');
   }
 
-  const prompt = `Como asistente virtual, el usuario necesita ayuda sobre cómo realizar la siguiente tarea: "${task}".
-
-Genera una explicación clara y concisa o una guía paso a paso para completar esta tarea. La respuesta debe ser adecuada para ser el contenido de una nota.
-
-IMPORTANTE: Responde únicamente con el contenido de la guía. No incluyas encabezados, saludos, o frases como "Aquí tienes una guía..." o "Espero que esto ayude".`;
+  const prompt = `Como asistente virtual de notas, analiza el siguiente texto (que es una tarea o nota) y proporciona una guía detallada paso a paso sobre cómo abordarla o completarla. Responde de forma clara y concisa, utilizando listas o enumeraciones si es necesario. Texto a analizar: "${task}"`;
 
   try {
     const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash", 
       contents: `Responde siempre en español: ${prompt}`,
     });
 
@@ -44,14 +42,15 @@ IMPORTANTE: Responde únicamente con el contenido de la guía. No incluyas encab
       throw new Error('La respuesta de la IA no contiene texto.');
     }
   } catch (error) {
-    console.error('Error generando la explicación:', error);
-    throw new Error('Error al contactar a la IA. Revisa tu API Key y la conexión a internet.');
+    console.error('Error generando explicación:', error);
+    // @ts-ignore
+    const errorMessage = error.message || 'Error desconocido al contactar a la IA.';
+    throw new Error(`Error al contactar a la IA: ${errorMessage}`);
   }
 }
 
-// Schemas de validación con Zod
 const NoteSchema = z.object({
-  id: z.string(),
+  id: z.string().or(z.number()).transform(String), 
   title: titleSchema,
   content: contentSchema,
   date: z.string(),
@@ -74,33 +73,45 @@ export default function NotesApp() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [aiGeneratedContent, setAiGeneratedContent] = useState('');
 
+
   useEffect(() => {
-    if (isEditing) {
-      validateFields();
+    loadNotes();
+  }, []);
+
+  const loadNotes = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get(`${BASE_URL}/notes`).then((res)=>{
+        return res.data;
+      });
+      setNotes(response);
+    } catch (error) {
+      console.error("Error cargando notas:", error);
+      Alert.alert("Error", "No se pudieron cargar las notas. Asegúrate de que el servidor está corriendo en la URL base configurada.");
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (isEditing) validateFields();
   }, [editTitle, editContent, isEditing]);
 
   useEffect(() => {
-    return () => {
-      Speech.stop();
-    };
+    return () => Speech.stop();
   }, []);
 
   const validateFields = () => {
     const errors = { title: '', content: '' };
-    
+
     if (editTitle.length > 0) {
       const result = titleSchema.safeParse(editTitle);
-      if (!result.success) {
-        errors.title = result.error.issues[0]?.message || 'Error de validación';
-      }
+      if (!result.success) errors.title = result.error.issues[0]?.message;
     }
 
     if (editContent.length > 0) {
       const result = contentSchema.safeParse(editContent);
-      if (!result.success) {
-        errors.content = result.error.issues[0]?.message || 'Error de validación';
-      }
+      if (!result.success) errors.content = result.error.issues[0]?.message;
     }
 
     setValidationErrors(errors);
@@ -125,24 +136,21 @@ export default function NotesApp() {
     setAiGeneratedContent('');
   };
 
-  const saveNote = () => {
+  const saveNote = async () => {
     if (!editTitle.trim() && !editContent.trim()) {
       Alert.alert('Error', 'La nota debe tener al menos un título o contenido.');
       return;
     }
 
     if (validationErrors.title || validationErrors.content) {
-      Alert.alert('Error de validación', 'Por favor, corrige los errores de validación antes de guardar.');
+      Alert.alert('Error', 'Corrige los errores antes de guardar.');
       return;
     }
 
     setLoading(true);
 
     const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
-    const formattedDate = `${day}/${month}/${year}`;
+    const formattedDate = now.toLocaleDateString("es-ES");
 
     const noteData = {
       title: editTitle.trim(),
@@ -150,35 +158,49 @@ export default function NotesApp() {
       date: formattedDate,
     };
 
-    if (selectedNote?.id) {
-      const updatedNote = { ...selectedNote, ...noteData };
-      setNotes(notes.map(note => (note.id === selectedNote.id ? updatedNote : note)));
-    } else {
-      const newNote = { ...noteData, id: Date.now().toString() };
-      setNotes([newNote, ...notes]);
-    }
+    try {
+      if (selectedNote?.id) {
+        const response = await axios.put(`${BASE_URL}/notes/${selectedNote.id}`, noteData);
+        const updatedNote = NoteSchema.parse(response.data);
+        setNotes(notes.map(note => note.id === updatedNote.id ? updatedNote : note));
+      } else {
+        const response = await axios.post(`${BASE_URL}/notes`, noteData);
+        const newNote = NoteSchema.parse(response.data);
+        setNotes([newNote, ...notes]);
+      }
 
-    setLoading(false);
-    closeEditor();
+      closeEditor();
+    } catch (error) {
+      console.error("Error guardando nota:", error);
+      Alert.alert("Error", "No se pudo guardar la nota.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const deleteNote = () => {
     if (!selectedNote?.id) return;
 
     Alert.alert(
-      'Confirmar eliminación',
-      '¿Estás seguro de que quieres eliminar esta nota?',
+      "Confirmar eliminación",
+      "¿Seguro que quieres eliminar esta nota?",
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: "Cancelar", style: "cancel" },
         {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => {
-            setNotes(notes.filter(note => note.id !== selectedNote.id));
-            closeEditor();
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await axios.delete(`${BASE_URL}/notes/${selectedNote.id}`);
+              setNotes(notes.filter(note => note.id !== selectedNote.id));
+              closeEditor();
+            } catch (error) {
+              console.error("Error eliminando nota:", error);
+              Alert.alert("Error", "No se pudo eliminar la nota.");
+            }
           },
         },
-      ],
+      ]
     );
   };
 
@@ -195,27 +217,25 @@ export default function NotesApp() {
     setIsSpeaking(false);
   };
 
-  const canSave = () => {
-    const hasContent = editTitle.trim().length > 0 || editContent.trim().length > 0;
-    const hasErrors = validationErrors.title !== '' || validationErrors.content !== '';
-    return hasContent && !hasErrors;
-  };
+  const canSave = () =>
+    (editTitle.trim() || editContent.trim()) &&
+    !validationErrors.title &&
+    !validationErrors.content;
 
   const handleGenerateContent = async () => {
     if (!editContent.trim()) {
-      Alert.alert('Error', 'Por favor, escribe una descripción de la tarea para generar ayuda.');
+      Alert.alert("Error", "Escribe una descripción antes de generar.");
       return;
     }
-    
+
     setIsGenerating(true);
     setGenerationError(null);
-    
+    setAiGeneratedContent('');
     try {
       const content = await generateTaskExplanation(editContent);
       setAiGeneratedContent(content);
-    } catch (error: any) {
-      setGenerationError(error.message);
-      Alert.alert('Error', error.message);
+    } catch (err: any) {
+      setGenerationError(err.message);
     } finally {
       setIsGenerating(false);
     }
@@ -225,23 +245,31 @@ export default function NotesApp() {
     if (!aiGeneratedContent.trim()) return;
 
     if (await Speech.isSpeakingAsync()) {
-      await Speech.stop();
+      Speech.stop();
       setIsSpeaking(false);
       return;
     }
 
     Speech.speak(aiGeneratedContent, {
-      language: 'es-ES',
+      language: "es-ES",
       onStart: () => setIsSpeaking(true),
       onDone: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
     });
   };
+const filteredNotes = notes.filter(note => {
 
-  const filteredNotes = notes.filter(note =>
-    note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    note.content.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const noteTitle = note.title || '';
+  const noteContent = note.content || '';
+
+  if (!noteTitle.trim() && !noteContent.trim()) {
+      return false; 
+  }
+
+  const matchesSearch = noteTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        noteContent.toLowerCase().includes(searchQuery.toLowerCase());
+
+  return matchesSearch;
+});
 
   if (loading && notes.length === 0) {
     return (

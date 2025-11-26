@@ -1,4 +1,3 @@
-
 import { StyleSheet } from 'react-native';
 import { colors } from './colors';
 
@@ -74,9 +73,13 @@ export const styles = StyleSheet.create({
     marginTop: 12,
     padding: 16,
     borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.lightest,
+    shadowColor: colors.lightest,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    elevation: 6,
   },
+  
   noteHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -195,7 +198,7 @@ export const styles = StyleSheet.create({
     marginVertical: 12,
   },
   aiButton: {
-    backgroundColor: colors.primary, 
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
